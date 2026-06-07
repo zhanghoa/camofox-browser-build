@@ -1,0 +1,12 @@
+# 构建产物（CI 动态生成）
+dist/
+camofox-src/
+
+# 依赖
+node_modules/
+
+# 系统/编辑器
+.DS_Store
+*.log
+.idea/
+.vscode/
