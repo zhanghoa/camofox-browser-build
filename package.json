@@ -1,0 +1,16 @@
+{
+  "name": "camoufox-arm64-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Camoufox browser service for ARM64",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "playwright-core": "^1.49.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
