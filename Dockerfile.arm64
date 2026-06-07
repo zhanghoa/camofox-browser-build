@@ -1,0 +1,34 @@
+FROM python:3.10-slim
+
+# 禁用缓冲区，方便查看日志
+ENV PYTHONUNBUFFERED=1
+# 关键：禁用浏览器沙箱（Docker 容器内必须）
+ENV PLAYWRIGHT_SKIP_BROWSER_SANDBOX=1
+
+# 安装 Camoufox 运行所需的系统依赖
+# 补充了字体库和无头浏览器常缺失的图形依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    xauth \
+    libgtk-3-0 \
+    libnss3 \
+    libx11-xcb1 \
+    libasound2 \
+    libdbus-glib-1-2 \
+    libgbm1 \
+    fonts-liberation \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 Camoufox Python 包
+RUN pip install --no-cache-dir camoufox
+
+# 关键步骤：在镜像构建期间下载 Camoufox 浏览器
+# 自动识别宿主架构（如 arm64/amd64），固化到镜像层
+RUN python -m camoufox fetch
+
+# 暴露服务端口
+EXPOSE 9377
+
+# 启动命令：修复了 CAMOUFOX 环境变量的拼写错误
+CMD ["sh", "-c", "xvfb-run --auto-servernum python -m camoufox run --port ${CAMOUFOX_PORT:-9377} --host ${CAMOUFOX_HOST:-0.0.0.0}"]
