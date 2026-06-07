@@ -1,19 +1,13 @@
-name: Build Camoufox for ARM64
+name: Build Camofox for ARM64
 
 on:
   push:
-    branches: ["main"]
-    tags: ["v*"]
+    branches: [ "main" ]
   workflow_dispatch:
-    inputs:
-      camoufox_version:
-        description: 'Camoufox version (e.g., 1.0.0)'
-        required: false
-        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -21,65 +15,26 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Determine Camoufox version
-        id: version
-        run: |
-          if [ -n "${{ github.event.inputs.camoufox_version }}" ]; then
-            VER="${{ github.event.inputs.camoufox_version }}"
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VER="${GITHUB_REF#refs/tags/v}"
-          else
-            VER=$(curl -s https://api.github.com/repos/jo-inc/camoufox-browser/releases/latest \
-              | jq -r '.tag_name' | sed 's/^v//')
-          fi
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
-          echo "📦 Using Camoufox version: $VER"
-
       - name: Fetch Camoufox binaries
         run: |
-          git clone --depth 1 https://github.com/jo-inc/camoufox-browser camofox-src
-          cp camofox-src/Makefile .
-          make fetch ARCH=aarch64 VERSION=${{ steps.version.outputs.version }}
-          rm -rf camofox-src
-          ls -lh dist/
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=sha,prefix=
-            type=ref,event=tag
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ steps.version.outputs.version }}
-
+          git clone https://github.com/jo-inc/camoufox-browser camofox-src
+          cp -r camofox-src/Makefile .
+          make fetch ARCH=aarch64
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - uses: docker/setup-qemu-action@v3
-        with:
-          image: tonistiigi/binfmt:latest
-
       - uses: docker/setup-buildx-action@v3
-
       - uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            ARCH=aarch64
-            CAMOUFOX_VERSION=${{ steps.version.outputs.version }}
+          tags: ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
