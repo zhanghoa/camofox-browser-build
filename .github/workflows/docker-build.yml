@@ -1,4 +1,4 @@
-name: Build and Push camofox-browser Docker Image
+name: Build and Push camofox-browser Docker Image (ARM64)
 
 on:
   push:
@@ -7,8 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # 替换为你的目标镜像名称，例如: your-username/camofox-browser
-  IMAGE_NAME: your-username/camofox-browser
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -18,32 +17,32 @@ jobs:
       packages: write
 
     steps:
-    - name: Checkout the official camofox-browser repository
+    - name: Checkout official repository
       uses: actions/checkout@v4
       with:
-        repository: jo-inc/camofox-browser # ⬅️ 关键：指定要克隆的官方仓库
+        repository: jo-inc/camofox-browser
         path: camofox-browser
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Fetch Camoufox and yt-dlp binaries
+    - name: Fetch Camoufox and yt-dlp (ARM64)
       working-directory: camofox-browser
       run: |
-        # 使用官方 Makefile 下载必要的二进制文件
-        make fetch ARCH=x86_64
+        make fetch ARCH=aarch64
 
-    - name: Log in to GitHub Container Registry
+    - name: Log in to GHCR
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build and push Docker image
+    - name: Build and push ARM64 image
       uses: docker/build-push-action@v6
       with:
-        context: camofox-browser # ⬅️ 将构建上下文指向包含 Dockerfile 的目录
+        context: camofox-browser
+        platforms: linux/arm64   # 只构建 ARM64
         push: true
         tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
         cache-from: type=gha
