@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}   # 例如: zhanghoa/camofox-official
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-arm64:
@@ -17,7 +17,10 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout official repository
+      - name: Checkout your repository (to get Dockerfile.arm64)
+        uses: actions/checkout@v4
+
+      - name: Checkout official camofox-browser repository
         uses: actions/checkout@v4
         with:
           repository: jo-inc/camofox-browser
@@ -26,22 +29,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Fetch Camoufox binaries (ARM64)
+      - name: Fetch Camoufox binaries (ARM64) - native extraction
         working-directory: camofox-browser
         run: |
-          # 下载并解压 ARM64 浏览器（在 x86 runner 上原生执行，无 QEMU 干扰）
           make fetch ARCH=aarch64
 
-      - name: Prepare build context with pre-extracted files
+      - name: Prepare build context with pre-extracted files and custom Dockerfile
         run: |
-          # 创建构建上下文目录
           mkdir -p build-context
-          # 复制整个 camofox-browser 目录（包含 dist/ 中的已解压文件）
           cp -r camofox-browser/* build-context/
-          # 注意：make fetch 已经在 dist/ 下生成了 camoufox-aarch64 目录和 yt-dlp-aarch64 文件
-          # 我们保留这些文件，Dockerfile 将直接复制它们
+          # 将仓库根目录下的 Dockerfile.arm64 复制到构建上下文
+          cp Dockerfile.arm64 build-context/
 
-      - name: Log in to GHCR
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -52,9 +52,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: build-context
-          file: build-context/Dockerfile.arm64   # 使用自定义 Dockerfile
+          file: build-context/Dockerfile.arm64
           platforms: linux/arm64
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
