@@ -31,4 +31,4 @@ RUN python -m camoufox fetch
 EXPOSE 9377
 
 # 启动命令：修复了 CAMOUFOX 环境变量的拼写错误
-CMD ["sh", "-c", "xvfb-run --auto-servernum python -m camoufox run --port ${CAMOUFOX_PORT:-9377} --host ${CAMOUFOX_HOST:-0.0.0.0}"]
+CMD ["sh", "-c", "xvfb-run --auto-servernum python -m camoufox server --port ${CAMOUFOX_PORT:-9377} --host ${CAMOUFOX_HOST:-0.0.0.0}"]
