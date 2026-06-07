@@ -1,71 +1,34 @@
-FROM node:22-slim
+FROM python:3.10-slim
 
-ARG CAMOUFOX_VERSION=135.0.1
-ARG CAMOUFOX_RELEASE=beta.24
-ARG ARCH=aarch64
-
-# 安装依赖（与官方 Dockerfile 一致）
-RUN apt-get update && apt-get install -y \
-    libgtk-3-0 \
-    libdbus-glib-1-2 \
-    libxt6 \
-    libasound2 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxi6 \
-    libxrandr2 \
-    libxrender1 \
-    libxss1 \
-    libxtst6 \
-    libegl1-mesa \
-    libgl1-mesa-dri \
-    libgbm1 \
-    xvfb \
-    fonts-liberation \
-    fonts-noto-color-emoji \
-    fontconfig \
-    ca-certificates \
-    curl \
-    unzip \
-    python3-minimal \
-    && rm -rf /var/lib/apt/lists/*
-
-# 复制预下载的二进制文件（由 make fetch 生成）
-COPY dist /dist
-
-# 安装 Camoufox 浏览器（直接复制解压好的目录，避免 QEMU 下运行 unzip）
-RUN mkdir -p /root/.cache/camoufox \
-    && cp -r /dist/camoufox-${ARCH}/* /root/.cache/camoufox/ \
-    && chmod -R 755 /root/.cache/camoufox \
-    && echo "{\"version\":\"${CAMOUFOX_VERSION}\",\"release\":\"${CAMOUFOX_RELEASE}\"}" > /root/.cache/camoufox/version.json \
-    && test -f /root/.cache/camoufox/camoufox-bin && echo "Camoufox installed successfully"
-
-# 安装 yt-dlp
-RUN cp /dist/yt-dlp-${ARCH} /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp
-
-WORKDIR /app
-
-# 复制官方项目的其余文件
-COPY package.json ./
-COPY scripts/ ./scripts/
-RUN npm install --production
-
-COPY server.js ./
-COPY camofox.config.json ./
-COPY lib/ ./lib/
-COPY plugins/ ./plugins/
-COPY scripts/ ./scripts/
-
-# 安装插件依赖（忽略可能的错误）
-RUN sh scripts/install-plugin-deps.sh || true
-
-ENV NODE_ENV=production
-ENV CAMOFOX_PORT=9377
+# 禁用缓冲区，方便查看日志
+ENV PYTHONUNBUFFERED=1
+# 关键：禁用浏览器沙箱（Docker 容器内必须）
 ENV PLAYWRIGHT_SKIP_BROWSER_SANDBOX=1
 
+# 安装 Camoufox 运行所需的系统依赖
+# 补充了字体库和无头浏览器常缺失的图形依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    xauth \
+    libgtk-3-0 \
+    libnss3 \
+    libx11-xcb1 \
+    libasound2 \
+    libdbus-glib-1-2 \
+    libgbm1 \
+    fonts-liberation \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 Camoufox Python 包
+RUN pip install --no-cache-dir camoufox
+
+# 关键步骤：在镜像构建期间下载 Camoufox 浏览器
+# 自动识别宿主架构（如 arm64/amd64），固化到镜像层
+RUN python -m camoufox fetch
+
+# 暴露服务端口
 EXPOSE 9377
 
-CMD ["sh", "-c", "node --max-old-space-size=${MAX_OLD_SPACE_SIZE:-128} server.js"]
+# 启动命令：修复了 CAMOUFOX 环境变量的拼写错误
+CMD ["sh", "-c", "xvfb-run --auto-servernum python -m camoufox run --port ${CAMOUFOX_PORT:-9377} --host ${CAMOUFOX_HOST:-0.0.0.0}"]
