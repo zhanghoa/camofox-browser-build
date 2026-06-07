@@ -1,52 +1,85 @@
-name: Build Official Camoufox for ARM64
+name: Build Camoufox for ARM64
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      camoufox_version:
+        description: 'Camoufox version (e.g., 1.0.0)'
+        required: false
+        default: ''
 
-env:
-  REGISTRY: ghcr.io
-  # 确保 GitHub 仓库名称为小写，否则 Docker 标签会报错
-  IMAGE_NAME: ${{ github.repository }}
-  # 强制 Action 提前使用 Node.js 24，消除 Node 20 弃用警告
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-arm64:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
 
     steps:
-      - name: Checkout your repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 引入 QEMU，让 x86 的宿主机能够执行 ARM64 的构建指令
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Determine Camoufox version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.camoufox_version }}" ]; then
+            VER="${{ github.event.inputs.camoufox_version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VER="${GITHUB_REF#refs/tags/v}"
+          else
+            VER=$(curl -s https://api.github.com/repos/jo-inc/camoufox-browser/releases/latest \
+              | jq -r '.tag_name' | sed 's/^v//')
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "📦 Using Camoufox version: $VER"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Fetch Camoufox binaries
+        run: |
+          git clone --depth 1 https://github.com/jo-inc/camoufox-browser camofox-src
+          cp camofox-src/Makefile .
+          make fetch ARCH=aarch64 VERSION=${{ steps.version.outputs.version }}
+          rm -rf camofox-src
+          ls -lh dist/
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          registry: ${{ env.REGISTRY }}
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }}
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 直接在当前目录使用优化后的 Dockerfile 构建
-      - name: Build and push ARM64 image
-        uses: docker/build-push-action@v6
+      - uses: docker/setup-qemu-action@v3
+        with:
+          image: tonistiigi/binfmt:latest
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.arm64
+          file: ./Dockerfile
           platforms: linux/arm64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ARCH=aarch64
+            CAMOUFOX_VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
-          sbom: false
