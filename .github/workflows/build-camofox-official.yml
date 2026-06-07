@@ -1,18 +1,13 @@
-name: Build ARM64 Docker Image for RK3566
+name: Build Camofox for ARM64
 
 on:
   push:
-    branches:
-      - main
-      - master
-    tags:
-      - 'v*'
-  workflow_dispatch:  # 允许手动触发
+    branches: [ "main" ]
+  workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  # 修改为自己的镜像名，例如：your-username/camofox-browser
-  IMAGE_NAME: ${{ github.repository }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -20,45 +15,49 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     steps:
-      - name: Checkout code
+      - name: Checkout custom repository
         uses: actions/checkout@v4
 
-      - name: Set up QEMU（用于模拟 ARM64 环境）
-        uses: docker/setup-qemu-action@v3
+      - name: Fetch and Isolate Camoufox binaries
+        run: |
+          # 1. 临时克隆官方上游源码
+          git clone https://github.com/jo-inc/camoufox-browser camofox-src
+          
+          # 2. 调用官方 Makefile 逻辑下载指定 ARM64 特制反检测内核
+          cd camofox-src && make fetch ARCH=aarch64 && cd ..
+          
+          # 3. 在构建根上下文创建规范的物理 dist 目录
+          mkdir -p dist
+          
+          # 4. 【暴力归位补丁】无视官方路径变动，无死角扫描所有生成的 zip 文件并强行移动到根目录
+          echo "Scanning workspace for browser binaries..."
+          find . -name "*.zip" -exec cp {} dist/ \;
+          
+          # 5. 打印验证，确保构建前上下文万无一失
+          echo "Verified assets in current build context:"
+          ls -lh dist/
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=sha,format=short
-            # 添加一个固定的 arm64 标签，方便拉取
-            type=raw,value=arm64-latest
+      - name: Set up QEMU (ARM64 Emulation)
+        uses: docker/setup-qemu-action@v3
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build and push ARM64 image
-        uses: docker/build-push-action@v5
+      - name: Execute Industrial Docker Build
+        uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.ci        # 使用 CI 优化版 Dockerfile
-          platforms: linux/arm64     # 只构建 ARM64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          file: ./Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
