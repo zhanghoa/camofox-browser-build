@@ -9,6 +9,8 @@ env:
   REGISTRY: ghcr.io
   # 确保 GitHub 仓库名称为小写，否则 Docker 标签会报错
   IMAGE_NAME: ${{ github.repository }}
+  # 强制 Action 提前使用 Node.js 24，消除 Node 20 弃用警告
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-arm64:
@@ -21,7 +23,7 @@ jobs:
       - name: Checkout your repository
         uses: actions/checkout@v4
 
-      # 【关键新增】引入 QEMU，让 x86 的宿主机能够执行 ARM64 的构建指令
+      # 引入 QEMU，让 x86 的宿主机能够执行 ARM64 的构建指令
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -35,7 +37,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 【大幅精简】直接在当前目录使用优化后的 Dockerfile 构建
+      # 直接在当前目录使用优化后的 Dockerfile 构建
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v6
         with:
