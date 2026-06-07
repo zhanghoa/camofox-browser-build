@@ -11,7 +11,6 @@ concurrency:
 
 jobs:
   build:
-    # 💡 换回普通服务器，3秒钟内绝对接单，不再排队！
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,7 +35,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 💡 请回 QEMU，用于跨架构打包环境（但不负责硬编译，所以不会崩溃）
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
