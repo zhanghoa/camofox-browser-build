@@ -1,4 +1,4 @@
-name: Build Official Camofox for ARM64
+name: Build Official Camoufox for ARM64
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # 确保 GitHub 仓库名称为小写，否则 Docker 标签会报错
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -17,29 +18,15 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout your repository (to get Dockerfile.arm64)
+      - name: Checkout your repository
         uses: actions/checkout@v4
 
-      - name: Checkout official camofox-browser repository
-        uses: actions/checkout@v4
-        with:
-          repository: jo-inc/camofox-browser
-          path: camofox-browser
+      # 【关键新增】引入 QEMU，让 x86 的宿主机能够执行 ARM64 的构建指令
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Fetch Camoufox binaries (ARM64) - native extraction
-        working-directory: camofox-browser
-        run: |
-          make fetch ARCH=aarch64
-
-      - name: Prepare build context with pre-extracted files and custom Dockerfile
-        run: |
-          mkdir -p build-context
-          cp -r camofox-browser/* build-context/
-          # 将仓库根目录下的 Dockerfile.arm64 复制到构建上下文
-          cp Dockerfile.arm64 build-context/
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -48,11 +35,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 【大幅精简】直接在当前目录使用优化后的 Dockerfile 构建
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v6
         with:
-          context: build-context
-          file: build-context/Dockerfile.arm64
+          context: .
+          file: Dockerfile.arm64
           platforms: linux/arm64
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
