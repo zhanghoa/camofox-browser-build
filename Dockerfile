@@ -1,14 +1,14 @@
 # --- 第一阶段：构建环境 (Builder) ---
 FROM node:20-bookworm-slim AS builder
 
-# 安装针对 ARM64 架构编译 C++ 原生插件所需的工具链
+# 原生 ARM 环境下，直接安装编译链进行极速原生编译，绝不卡死或崩溃
 RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ make python3 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY package*.json ./
 
-# 安装完整依赖并强制针对当前架构重新编译 better-sqlite3
+# 安装完整依赖并强制针对当前架构进行本地硬核编译（直接跑在 GitHub 的 ARM 刀片服务器上）
 RUN npm ci && npm rebuild better-sqlite3 --build-from-source
 
 # --- 第二阶段：生产运行时环境 (Runtime) ---
@@ -25,11 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# 从第一阶段克隆出纯净编译好的 node_modules，杜绝本地环境覆盖
+# 从第一阶段克隆出纯净、针对原生 ARM64 编译好的 node_modules，杜绝体积脂肪
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
-# 建立符合官方行为的缓存及配置目录，并统一变更文件属主
+# 建立符合官方行为的缓存及配置目录，并统一变更文件属主为内置的 node 用户
 RUN mkdir -p /home/nodeuser/.cache/camoufox /home/nodeuser/.camoufox/profiles \
     && chown -R node:node /home/nodeuser /app
 
@@ -42,7 +42,7 @@ RUN --mount=type=bind,source=dist,target=/dist \
     && unzip -q "/dist/camoufox-${ARCH}.zip" -d /home/nodeuser/.cache/camoufox \
     # 注入假通行证，绕过 API 启动时严格的版本文件前置校验
     && echo "{\"version\":\"${CAMOUFOX_VERSION}\",\"release\":\"${CAMOUFOX_VERSION}\"}" > /home/nodeuser/.cache/camoufox/version.json \
-    # 狸猫换太子：拦截并清洗 Node 环境下恶性的 [object Promise] 环境变量污染
+    # 狸猫换太子补丁：拦截并清洗 Node20+ 环境下恶性的 [object Promise] 环境变量污染
     && mv /home/nodeuser/.cache/camoufox/camoufox-bin /home/nodeuser/.cache/camoufox/camoufox-bin-real \
     && printf '#!/bin/sh\nexport DISPLAY=${DISPLAY:-:99}\nexec /home/nodeuser/.cache/camoufox/camoufox-bin-real "$@"\n' > /home/nodeuser/.cache/camoufox/camoufox-bin \
     && chmod +x /home/nodeuser/.cache/camoufox/camoufox-bin \
